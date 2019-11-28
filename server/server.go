@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -83,6 +84,7 @@ func legalMessage(body string) (message string) {
 
 type infocenterGetHandler struct {
 	eventStreamBroker          *chanbroker.Broker
+	idCounter                  uint64
 	aboutToEnterSelectLoopFunc func()
 }
 
@@ -90,7 +92,7 @@ func newInfocenterGetHandler(eventStreamBroker *chanbroker.Broker) *infocenterGe
 	return &infocenterGetHandler{eventStreamBroker: eventStreamBroker}
 }
 
-func (handler infocenterGetHandler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+func (handler *infocenterGetHandler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	topic, ok := requestTopic(request, writer)
 	if !ok {
 		return
@@ -114,14 +116,14 @@ loop:
 			if topicAndMessage.topic != topic {
 				break
 			}
-			if err := writeEvent(writer, "msg", topicAndMessage.message); err != nil {
+			if err := writeEvent(&handler.idCounter, writer, "msg", topicAndMessage.message); err != nil {
 				log.Println("Writing response failed: ", err)
 				break loop
 			}
 		case <-time.After(time.Duration(EventStreamTimeoutSeconds) * time.Second):
 			handler.eventStreamBroker.Unsubscribe(messageChannel)
 			timeoutMessage := fmt.Sprintf("%ds", EventStreamTimeoutSeconds)
-			if err := writeEvent(writer, "timeout", timeoutMessage); err != nil {
+			if err := writeEvent(&handler.idCounter, writer, "timeout", timeoutMessage); err != nil {
 				log.Println("Writing response failed: ", err)
 			}
 			break loop
@@ -144,22 +146,25 @@ func requestTopic(request *http.Request, writer http.ResponseWriter) (topic stri
 	return topic, ok
 }
 
-func writeEvent(w io.Writer, event string, data string) (err error) {
+func writeEvent(idCounter *uint64, w io.Writer, event string, data string) error {
 	if writerFlusher, ok := w.(http.Flusher); ok {
 		defer writerFlusher.Flush()
 	}
-	err = nil
+	if !validEventAnyChar(data) {
+		return errors.New("invalid event data")
+	}
 	if event != "" {
 		if !validEventAnyChar(event) {
 			return errors.New("invalid event name")
 		}
+	}
+	if _, err := w.Write([]byte(fmt.Sprintln("id:", atomic.AddUint64(idCounter, 1)))); err != nil {
+		return err
+	}
+	if event != "" {
 		if _, err := w.Write([]byte(fmt.Sprintln("event:", event))); err != nil {
 			return err
 		}
-	}
-	if !validEventAnyChar(data) {
-		data = "<invalid data>"
-		err = errors.New("invalid event data")
 	}
 	if _, err := w.Write([]byte(fmt.Sprintln("data:", data))); err != nil {
 		return err
@@ -167,7 +172,7 @@ func writeEvent(w io.Writer, event string, data string) (err error) {
 	if _, err := w.Write([]byte("\n")); err != nil {
 		return err
 	}
-	return err
+	return nil
 }
 
 func validEventAnyChar(value string) bool {

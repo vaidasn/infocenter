@@ -87,7 +87,7 @@ func TestSameTopicCancelInfocenterGetHandler_ServeHTTP(t *testing.T) {
 		t.Fatalf("Unexpected write flush invocation count %d", writer.e.writeFlushInvocations)
 	}
 	if !reflect.DeepEqual(writer.e.writeInvocations,
-		bytesOfBytes("event: msg\n", "data: message text\n", "\n")) {
+		bytesOfBytes("id: 1\n", "event: msg\n", "data: message text\n", "\n")) {
 		t.Fatalf("Unexpected write invocations %q", writer.e.writeInvocations)
 	}
 }
@@ -114,7 +114,7 @@ func TestDifferentTopicTimeoutInfocenterGetHandler_ServeHTTP(t *testing.T) {
 		t.Fatalf("Unexpected write flush invocation count %d", writer.e.writeFlushInvocations)
 	}
 	if !reflect.DeepEqual(writer.e.writeInvocations,
-		bytesOfBytes("event: timeout\n", "data: 2s\n", "\n")) {
+		bytesOfBytes("id: 1\n", "event: timeout\n", "data: 2s\n", "\n")) {
 		t.Fatalf("Unexpected write invocations %q", writer.e.writeInvocations)
 	}
 }

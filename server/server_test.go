@@ -42,7 +42,7 @@ func TestGetTimeout(t *testing.T) {
 		t.Fatalf("Read body failed: %q", err)
 	}
 	responseContent := bodyBuffer.String()
-	if responseContent != "event: timeout\ndata: 2s\n\n" {
+	if responseContent != "id: 1\nevent: timeout\ndata: 2s\n\n" {
 		t.Fatalf("Unrecognized response content %q", responseContent)
 	}
 
@@ -73,45 +73,50 @@ func (w testWriteEventWriter) Write(bytes []byte) (int, error) {
 
 func TestWriteEventWithEventName(t *testing.T) {
 	writer := testWriteEventWriter{t: t, e: &testWriteEventWriterExpectations{}}
-	if err := writeEvent(writer, "message", "data1"); err != nil {
+	idCounter := uint64(0)
+	if err := writeEvent(&idCounter, writer, "message", "data1"); err != nil {
 		t.Fatalf("Failed to write %q", err)
 	}
 	if !reflect.DeepEqual(writer.e.writeInvocations,
-		bytesOfBytes("event: message\n", "data: data1\n", "\n")) {
+		bytesOfBytes("id: 1\n", "event: message\n", "data: data1\n", "\n")) {
 		t.Fatalf("Unexpected write invocations %q", writer.e.writeInvocations)
 	}
 }
 
 func TestWriteEventWithoutEventName(t *testing.T) {
 	writer := testWriteEventWriter{t: t, e: &testWriteEventWriterExpectations{}}
-	if err := writeEvent(writer, "", "data2"); err != nil {
+	idCounter := uint64(0)
+	if err := writeEvent(&idCounter, writer, "", "data2"); err != nil {
 		t.Fatalf("Failed to write %q", err)
 	}
-	if !reflect.DeepEqual(writer.e.writeInvocations, bytesOfBytes("data: data2\n", "\n")) {
+	if !reflect.DeepEqual(writer.e.writeInvocations, bytesOfBytes("id: 1\n", "data: data2\n", "\n")) {
 		t.Fatalf("Unexpected write invocations %q", writer.e.writeInvocations)
 	}
 }
 
 func TestWriteEventFailedWrite(t *testing.T) {
-	writeEventFailedWrite(t, 1, bytesOfBytes("event: message\n"))
-	writeEventFailedWrite(t, 2, bytesOfBytes("event: message\n", "data: data3\n"))
-	writeEventFailedWrite(t, 3, bytesOfBytes("event: message\n", "data: data3\n", "\n"))
+	writeEventFailedWrite(t, 1, bytesOfBytes("id: 1\n"))
+	writeEventFailedWrite(t, 2, bytesOfBytes("id: 1\n", "event: message\n"))
+	writeEventFailedWrite(t, 3, bytesOfBytes("id: 1\n", "event: message\n", "data: data3\n"))
+	writeEventFailedWrite(t, 4, bytesOfBytes("id: 1\n", "event: message\n", "data: data3\n", "\n"))
 }
 
 func writeEventFailedWrite(t *testing.T, failedWriteOn int, expectedWriteInvocation [][]byte) {
 	writer := testWriteEventWriter{t: t, failWriteOn: failedWriteOn, e: &testWriteEventWriterExpectations{}}
-	if err := writeEvent(writer, "message", "data3"); err == nil ||
+	idCounter := uint64(0)
+	if err := writeEvent(&idCounter, writer, "message", "data3"); err == nil ||
 		err.Error() != "testing failed writer error" {
 		t.Fatalf("Unexpected write event error \"%v\"", err)
 	}
 	if !reflect.DeepEqual(writer.e.writeInvocations, expectedWriteInvocation) {
-		t.Errorf("Unexpected write invocations %q", writer.e.writeInvocations)
+		t.Errorf("Unexpected write invocations %q, expected %q", writer.e.writeInvocations, expectedWriteInvocation)
 	}
 }
 
 func TestWriteEventWithMultilineEvent(t *testing.T) {
 	writer := testWriteEventWriter{t: t, e: &testWriteEventWriterExpectations{}}
-	if err := writeEvent(writer, "message\n", "data4"); err == nil ||
+	idCounter := uint64(0)
+	if err := writeEvent(&idCounter, writer, "message\n", "data4"); err == nil ||
 		err.Error() != "invalid event name" {
 		t.Fatalf("Unexpected write event error \"%v\"", err)
 	}
@@ -122,12 +127,36 @@ func TestWriteEventWithMultilineEvent(t *testing.T) {
 
 func TestWriteEventWithMultilineData(t *testing.T) {
 	writer := testWriteEventWriter{t: t, e: &testWriteEventWriterExpectations{}}
-	if err := writeEvent(writer, "message", "data5\rdata6"); err == nil ||
+	idCounter := uint64(0)
+	if err := writeEvent(&idCounter, writer, "message", "data5\rdata6"); err == nil ||
 		err.Error() != "invalid event data" {
 		t.Fatalf("Unexpected write event error \"%v\"", err)
 	}
-	if !reflect.DeepEqual(writer.e.writeInvocations,
-		bytesOfBytes("event: message\n", "data: <invalid data>\n", "\n")) {
+	if len(writer.e.writeInvocations) != 0 {
 		t.Fatalf("Unexpected write invocations %q", writer.e.writeInvocations)
+	}
+}
+
+func TestConcurrentWriteEventIds(t *testing.T) {
+	idCounter := uint64(0)
+	idWritesCh := make(chan string)
+	const concurrencyNum = 10000
+	for i := 0; i < concurrencyNum; i++ {
+		go func(idCounterP *uint64) {
+			writer := testWriteEventWriter{t: t, e: &testWriteEventWriterExpectations{}}
+			_ = writeEvent(&idCounter, writer, "", "data")
+			idWritesCh <- string(writer.e.writeInvocations[0])
+		}(&idCounter)
+	}
+	actualIdWrites := make(map[string]struct{})
+	for i := 0; i < concurrencyNum; i++ {
+		actualIdWrites[<-idWritesCh] = struct{}{}
+	}
+	expectedIdWrites := make(map[string]struct{})
+	for i := 0; i < concurrencyNum; i++ {
+		expectedIdWrites[fmt.Sprintln("id:", i+1)] = struct{}{}
+	}
+	if !reflect.DeepEqual(actualIdWrites, expectedIdWrites) {
+		t.Fatalf("Unexpected ids %q, expected %q", actualIdWrites, expectedIdWrites)
 	}
 }
