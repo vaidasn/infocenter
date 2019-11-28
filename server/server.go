@@ -58,7 +58,7 @@ func newInfocenterPostHandler(eventStreamBroker *chanbroker.Broker) *infocenterP
 	return &infocenterPostHandler{eventStreamBroker: eventStreamBroker}
 }
 
-func (handler infocenterPostHandler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+func (handler *infocenterPostHandler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	bodyBuffer := bytes.Buffer{}
 	if _, err := bodyBuffer.ReadFrom(request.Body); err != nil {
 		writer.WriteHeader(http.StatusInternalServerError)
