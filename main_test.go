@@ -11,6 +11,7 @@ func init() {
 
 func TestDefaultInfocenter(t *testing.T) {
 	c := testcli.Command("infocenter")
+	c.SetEnv([]string{"GODEBUG=infocenterDryRun=1"})
 	c.Run()
 	if !c.Success() {
 		t.Fatalf("Expected to succeed, but failed: %s", c.Error())
@@ -23,6 +24,7 @@ func TestDefaultInfocenter(t *testing.T) {
 
 func TestInfocenterHelp(t *testing.T) {
 	c := testcli.Command("infocenter", "--help")
+	c.SetEnv([]string{"GODEBUG=infocenterDryRun=1"})
 	c.Run()
 	if !c.Failure() {
 		t.Fatalf("Expected to return non zero return code, but failed: %s", c.Error())

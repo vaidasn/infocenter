@@ -2,12 +2,12 @@
 
 
 [[projects]]
-  branch = "master"
-  digest = "1:9caf8a2eeb3f0c9ae2b68b111409fbb3db84a9f11108e0f2c4828fd60a7cf14a"
-  name = "github.com/SierraSoftworks/multicast"
+  digest = "1:cbec35fe4d5a4fba369a656a8cd65e244ea2c743007d8f6c1ccb132acf9d1296"
+  name = "github.com/gorilla/mux"
   packages = ["."]
   pruneopts = "UT"
-  revision = "c029c77710e4b481bded6cc7b4170e67b3f38528"
+  revision = "00bdffe0f3c77e27d2cf6f5c70232a2d3e4d9c15"
+  version = "v1.7.3"
 
 [[projects]]
   branch = "master"
@@ -29,7 +29,7 @@
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
-    "github.com/SierraSoftworks/multicast",
+    "github.com/gorilla/mux",
     "github.com/rendon/testcli",
     "github.com/spf13/pflag",
   ]
