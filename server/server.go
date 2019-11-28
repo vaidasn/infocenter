@@ -103,11 +103,15 @@ func (handler *infocenterGetHandler) ServeHTTP(writer http.ResponseWriter, reque
 	if writerFlusher, ok := writer.(http.Flusher); ok {
 		writerFlusher.Flush()
 	}
+	messageLoop(handler, writer, request, topic)
+}
+
+func messageLoop(handler *infocenterGetHandler, writer http.ResponseWriter, request *http.Request, topic string) {
 	messageChannel := handler.eventStreamBroker.Subscribe()
-	context := request.Context()
 	if handler.aboutToEnterSelectLoopFunc != nil {
 		handler.aboutToEnterSelectLoopFunc()
 	}
+	context := request.Context()
 loop:
 	for {
 		select {
@@ -143,7 +147,7 @@ func requestTopic(request *http.Request, writer http.ResponseWriter) (topic stri
 			log.Println("Writing response failed: ", err)
 		}
 	}
-	return topic, ok
+	return
 }
 
 func writeEvent(idCounter *uint64, w io.Writer, event string, data string) error {

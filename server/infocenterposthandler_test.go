@@ -56,7 +56,8 @@ func TestMultipleSuccessfulInfocenterPostHandler_ServeHTTP(t *testing.T) {
 	if testing.Short() {
 		t.SkipNow()
 	}
-	for i := 0; i < 10000; i++ {
+	const postRequestCount = 10000
+	for i := 0; i < postRequestCount; i++ {
 		TestSuccessfulInfocenterPostHandler_ServeHTTP(t)
 	}
 }

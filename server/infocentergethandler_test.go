@@ -36,8 +36,7 @@ func (w testGetResponseWriter) Write(bytes []byte) (int, error) {
 
 func (w testGetResponseWriter) WriteHeader(statusCode int) {
 	if statusCode != w.expectedStatusCode {
-		w.t.Errorf("Unexpected status code %d", statusCode)
-		panic(w)
+		w.t.Fatalf("Unexpected status code %d", statusCode)
 	}
 	w.e.writeHeaderInvocations++
 }
@@ -93,8 +92,10 @@ func TestSameTopicCancelInfocenterGetHandler_ServeHTTP(t *testing.T) {
 }
 
 func TestDifferentTopicTimeoutInfocenterGetHandler_ServeHTTP(t *testing.T) {
+	const eventStreamTimeoutSeconds = 2
+	const eventStreamTimeoutData = "data: 2s\n"
 	savedEventStreamTimeoutSeconds := EventStreamTimeoutSeconds
-	EventStreamTimeoutSeconds = 2
+	EventStreamTimeoutSeconds = eventStreamTimeoutSeconds
 	defer func() {
 		EventStreamTimeoutSeconds = savedEventStreamTimeoutSeconds
 	}()
@@ -114,7 +115,7 @@ func TestDifferentTopicTimeoutInfocenterGetHandler_ServeHTTP(t *testing.T) {
 		t.Fatalf("Unexpected write flush invocation count %d", writer.e.writeFlushInvocations)
 	}
 	if !reflect.DeepEqual(writer.e.writeInvocations,
-		bytesOfBytes("id: 1\n", "event: timeout\n", "data: 2s\n", "\n")) {
+		bytesOfBytes("id: 1\n", "event: timeout\n", eventStreamTimeoutData, "\n")) {
 		t.Fatalf("Unexpected write invocations %q", writer.e.writeInvocations)
 	}
 }

@@ -23,8 +23,10 @@ func TestPost(t *testing.T) {
 }
 
 func TestGetTimeout(t *testing.T) {
+	const eventStreamTimeoutSeconds = 2
+	const eventStreamTimeoutResponse = "id: 1\nevent: timeout\ndata: 2s\n\n"
 	savedEventStreamTimeoutSeconds := EventStreamTimeoutSeconds
-	EventStreamTimeoutSeconds = 2
+	EventStreamTimeoutSeconds = eventStreamTimeoutSeconds
 	defer func() {
 		EventStreamTimeoutSeconds = savedEventStreamTimeoutSeconds
 	}()
@@ -42,7 +44,7 @@ func TestGetTimeout(t *testing.T) {
 		t.Fatalf("Read body failed: %q", err)
 	}
 	responseContent := bodyBuffer.String()
-	if responseContent != "id: 1\nevent: timeout\ndata: 2s\n\n" {
+	if responseContent != eventStreamTimeoutResponse {
 		t.Fatalf("Unrecognized response content %q", responseContent)
 	}
 

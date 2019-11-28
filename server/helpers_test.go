@@ -22,6 +22,7 @@ func listenAndServe(t *testing.T) (net.Listener, *http.Server, chan error) {
 }
 
 func subscribeTestEvent(t *testing.T, infocenterPostHandler *infocenterPostHandler, enableTimeout bool) (quitCh chan int) {
+	const subscribeTimeout = 2 * time.Second
 	quitCh = make(chan int)
 	go func() {
 		publishInvocationCount := 0
@@ -39,7 +40,7 @@ func subscribeTestEvent(t *testing.T, infocenterPostHandler *infocenterPostHandl
 				if publishInvocationCount >= 1 {
 					break loop
 				}
-			case <-time.After(2 * time.Second):
+			case <-time.After(subscribeTimeout):
 				if enableTimeout {
 					break loop
 				}
