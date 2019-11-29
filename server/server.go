@@ -112,7 +112,6 @@ func messageLoop(handler *infocenterGetHandler, writer http.ResponseWriter, requ
 		handler.aboutToEnterSelectLoopFunc()
 	}
 	context := request.Context()
-loop:
 	for {
 		select {
 		case m := <-messageChannel:
@@ -122,7 +121,7 @@ loop:
 			}
 			if err := writeEvent(&handler.idCounter, writer, "msg", topicAndMessage.message); err != nil {
 				log.Println("Writing response failed: ", err)
-				break loop
+				return
 			}
 		case <-time.After(time.Duration(EventStreamTimeoutSeconds) * time.Second):
 			handler.eventStreamBroker.Unsubscribe(messageChannel)
@@ -130,10 +129,10 @@ loop:
 			if err := writeEvent(&handler.idCounter, writer, "timeout", timeoutMessage); err != nil {
 				log.Println("Writing response failed: ", err)
 			}
-			break loop
+			return
 		case <-context.Done():
 			handler.eventStreamBroker.Unsubscribe(messageChannel)
-			break loop
+			return
 		}
 	}
 }
