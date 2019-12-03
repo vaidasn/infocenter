@@ -1,11 +1,10 @@
 package server
 
 import (
-	"context"
-	"github.com/gorilla/mux"
 	"net/http"
 	"reflect"
 	"testing"
+	"time"
 )
 
 type testGetResponseWriterExpectations struct {
@@ -51,13 +50,7 @@ func TestNoMessageCancelInfocenterGetHandler_ServeHTTP(t *testing.T) {
 
 	infocenterGetHandler.ServeHTTP(writer, request)
 
-	if !reflect.DeepEqual(writer.e.writeHeader,
-		http.Header{"Cache-Control": {"no-cache"}, "Content-Type": {"text/event-stream"}}) {
-		t.Fatalf("Unexpected write headers %q", writer.e.writeHeader)
-	}
-	if writer.e.writeHeaderInvocations != 1 {
-		t.Fatalf("Unexpected write header invocation count %d", writer.e.writeHeaderInvocations)
-	}
+	assertResponseHeaders(t, writer)
 	if writer.e.writeFlushInvocations != 1 {
 		t.Fatalf("Unexpected write flush invocation count %d", writer.e.writeFlushInvocations)
 	}
@@ -68,20 +61,14 @@ func TestNoMessageCancelInfocenterGetHandler_ServeHTTP(t *testing.T) {
 
 func TestSameTopicCancelInfocenterGetHandler_ServeHTTP(t *testing.T) {
 	infocenterGetHandler, writer, requestCancel, request := mockGetRequestHandler(t, "get-topic")
-	publishTestEvent(&infocenterGetHandler)
+	publishTestEvent(&infocenterGetHandler, nil)
 	writer.wroteBytes = func() {
 		requestCancel()
 	}
 
 	infocenterGetHandler.ServeHTTP(writer, request)
 
-	if !reflect.DeepEqual(writer.e.writeHeader,
-		http.Header{"Cache-Control": {"no-cache"}, "Content-Type": {"text/event-stream"}}) {
-		t.Fatalf("Unexpected write headers %q", writer.e.writeHeader)
-	}
-	if writer.e.writeHeaderInvocations != 1 {
-		t.Fatalf("Unexpected write header invocation count %d", writer.e.writeHeaderInvocations)
-	}
+	assertResponseHeaders(t, writer)
 	if writer.e.writeFlushInvocations != 2 {
 		t.Fatalf("Unexpected write flush invocation count %d", writer.e.writeFlushInvocations)
 	}
@@ -100,17 +87,11 @@ func TestDifferentTopicTimeoutInfocenterGetHandler_ServeHTTP(t *testing.T) {
 		EventStreamTimeoutSeconds = savedEventStreamTimeoutSeconds
 	}()
 	infocenterGetHandler, writer, _, request := mockGetRequestHandler(t, "different topic")
-	publishTestEvent(&infocenterGetHandler)
+	publishTestEvent(&infocenterGetHandler, nil)
 
 	infocenterGetHandler.ServeHTTP(writer, request)
 
-	if !reflect.DeepEqual(writer.e.writeHeader,
-		http.Header{"Cache-Control": {"no-cache"}, "Content-Type": {"text/event-stream"}}) {
-		t.Fatalf("Unexpected write headers %q", writer.e.writeHeader)
-	}
-	if writer.e.writeHeaderInvocations != 1 {
-		t.Fatalf("Unexpected write header invocation count %d", writer.e.writeHeaderInvocations)
-	}
+	assertResponseHeaders(t, writer)
 	if writer.e.writeFlushInvocations != 2 {
 		t.Fatalf("Unexpected write flush invocation count %d", writer.e.writeFlushInvocations)
 	}
@@ -120,20 +101,39 @@ func TestDifferentTopicTimeoutInfocenterGetHandler_ServeHTTP(t *testing.T) {
 	}
 }
 
-func mockGetRequestHandler(t *testing.T, topic string) (infocenterGetHandler, testGetResponseWriter,
-	context.CancelFunc, *http.Request) {
-	infocenterGetHandler := infocenterGetHandler{eventStreamBroker: newEventStreamBroker()}
-	writer := testGetResponseWriter{
-		t:                  t,
-		expectedStatusCode: http.StatusOK,
-		e:                  &testGetResponseWriterExpectations{writeHeader: http.Header{}},
+func TestTwoMessageTimeoutInfocenterGetHandler_ServeHTTP(t *testing.T) {
+	const eventStreamTimeoutSeconds = 2
+	const eventStreamTimeoutData = "data: 2s\n"
+	savedEventStreamTimeoutSeconds := EventStreamTimeoutSeconds
+	EventStreamTimeoutSeconds = eventStreamTimeoutSeconds
+	defer func() {
+		EventStreamTimeoutSeconds = savedEventStreamTimeoutSeconds
+	}()
+	infocenterGetHandler, writer, requestCancel, request := mockGetRequestHandler(t, "get-topic")
+	stopPublishingCh := make(chan struct{})
+	publishTestEvent(&infocenterGetHandler, func(defaultPublishFunc func()) {
+		defaultPublishFunc()
+		for i := 0; i < eventStreamTimeoutSeconds*10; i++ {
+			select {
+			case <-time.After(time.Second):
+				infocenterGetHandler.eventStreamBroker.Publish(topicAndMessage{"get-topic", "message text"})
+			case <-stopPublishingCh:
+				return
+			}
+		}
+		requestCancel()
+		t.Fatal("Publish loop never stopped")
+	})
+
+	infocenterGetHandler.ServeHTTP(writer, request)
+	close(stopPublishingCh)
+
+	assertResponseHeaders(t, writer)
+	if writer.e.writeFlushInvocations < 2 {
+		t.Fatalf("Unexpected write flush invocation count %d", writer.e.writeFlushInvocations)
 	}
-	requestContext, requestCancel := context.WithCancel(context.Background())
-	request, err := http.NewRequestWithContext(requestContext, "GET",
-		"http://localhost/infocenter/test-topic", http.NoBody)
-	if err != nil {
-		t.Fatalf("Got error while creating new request: %q", err)
+	if !reflect.DeepEqual(writer.e.writeInvocations[len(writer.e.writeInvocations)-3:],
+		bytesOfBytes("event: timeout\n", eventStreamTimeoutData, "\n")) {
+		t.Fatalf("Unexpected write invocations %q", writer.e.writeInvocations)
 	}
-	request = mux.SetURLVars(request, map[string]string{"topic": topic})
-	return infocenterGetHandler, writer, requestCancel, request
 }

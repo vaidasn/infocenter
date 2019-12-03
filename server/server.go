@@ -111,6 +111,8 @@ func messageLoop(handler *infocenterGetHandler, writer http.ResponseWriter, requ
 	if handler.aboutToEnterSelectLoopFunc != nil {
 		handler.aboutToEnterSelectLoopFunc()
 	}
+	requestTimeoutTimer := time.NewTimer(time.Duration(EventStreamTimeoutSeconds) * time.Second)
+	defer requestTimeoutTimer.Stop()
 	context := request.Context()
 	for {
 		select {
@@ -123,7 +125,7 @@ func messageLoop(handler *infocenterGetHandler, writer http.ResponseWriter, requ
 				log.Println("Writing response failed: ", err)
 				return
 			}
-		case <-time.After(time.Duration(EventStreamTimeoutSeconds) * time.Second):
+		case <-requestTimeoutTimer.C:
 			handler.eventStreamBroker.Unsubscribe(messageChannel)
 			timeoutMessage := fmt.Sprintf("%ds", EventStreamTimeoutSeconds)
 			if err := writeEvent(&handler.idCounter, writer, "timeout", timeoutMessage); err != nil {

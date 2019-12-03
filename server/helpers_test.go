@@ -2,8 +2,10 @@ package server
 
 import (
 	"context"
+	"github.com/gorilla/mux"
 	"net"
 	"net/http"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -53,14 +55,47 @@ func subscribeTestEvent(t *testing.T, infocenterPostHandler *infocenterPostHandl
 	return
 }
 
-func publishTestEvent(infocenterGetHandler *infocenterGetHandler) {
+func publishTestEvent(infocenterGetHandler *infocenterGetHandler, customPublishFunc func(defaultPublishFunc func())) {
 	infocenterGetHandler.aboutToEnterSelectLoopFunc = func() {
 		started := make(chan struct{})
-		go func() {
+		publishFunc := func() {
 			infocenterGetHandler.eventStreamBroker.Publish(topicAndMessage{"get-topic", "message text"})
 			close(started)
-		}()
+		}
+		if customPublishFunc != nil {
+			go customPublishFunc(publishFunc)
+		} else {
+			go publishFunc()
+		}
 		<-started
+	}
+}
+
+func mockGetRequestHandler(t *testing.T, topic string) (infocenterGetHandler, testGetResponseWriter,
+	context.CancelFunc, *http.Request) {
+	infocenterGetHandler := infocenterGetHandler{eventStreamBroker: newEventStreamBroker()}
+	writer := testGetResponseWriter{
+		t:                  t,
+		expectedStatusCode: http.StatusOK,
+		e:                  &testGetResponseWriterExpectations{writeHeader: http.Header{}},
+	}
+	requestContext, requestCancel := context.WithCancel(context.Background())
+	request, err := http.NewRequestWithContext(requestContext, "GET",
+		"http://localhost/infocenter/test-topic", http.NoBody)
+	if err != nil {
+		t.Fatalf("Got error while creating new request: %q", err)
+	}
+	request = mux.SetURLVars(request, map[string]string{"topic": topic})
+	return infocenterGetHandler, writer, requestCancel, request
+}
+
+func assertResponseHeaders(t *testing.T, writer testGetResponseWriter) {
+	if !reflect.DeepEqual(writer.e.writeHeader,
+		http.Header{"Cache-Control": {"no-cache"}, "Content-Type": {"text/event-stream"}}) {
+		t.Fatalf("Unexpected write headers %q", writer.e.writeHeader)
+	}
+	if writer.e.writeHeaderInvocations != 1 {
+		t.Fatalf("Unexpected write header invocation count %d", writer.e.writeHeaderInvocations)
 	}
 }
 
