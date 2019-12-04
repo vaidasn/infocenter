@@ -43,8 +43,10 @@ func (b *Broker) Start() {
 				subs[msgCh] = struct{}{}
 			case eventUnsubscribe:
 				msgCh := event.content.(chan interface{})
-				delete(subs, msgCh)
-				close(msgCh)
+				if _, ok := subs[msgCh]; ok {
+					delete(subs, msgCh)
+					close(msgCh)
+				}
 			case eventPublish:
 				msg := event.content
 				for msgCh := range subs {
@@ -69,9 +71,13 @@ func (b *Broker) Subscribe() chan interface{} {
 }
 
 func (b *Broker) Unsubscribe(msgCh chan interface{}) {
-	b.eventCh <- event{
-		eventType: eventUnsubscribe,
-		content:   msgCh,
+	go func() {
+		b.eventCh <- event{
+			eventType: eventUnsubscribe,
+			content:   msgCh,
+		}
+	}()
+	for range msgCh {
 	}
 }
 

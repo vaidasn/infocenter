@@ -7,8 +7,10 @@ import (
 func TestBroker_Publish(t *testing.T) {
 	b := NewBroker()
 	go b.Start()
+	defer b.Stop()
 
 	const clientCount = 3
+	const stopClientMessage = -1
 	clientDone := make(chan [clientCount]int)
 	// Create and subscribe some clients:
 	clientFunc := func(id int, subscriberCh chan chan interface{}) {
@@ -17,9 +19,14 @@ func TestBroker_Publish(t *testing.T) {
 		msgSum := 0
 		msgCount := 0
 		for msg := range msgCh {
-			msgSum += msg.(int)
+			msgInt := msg.(int)
+			if msgInt == stopClientMessage {
+				break
+			}
+			msgSum += msgInt
 			msgCount++
 		}
+		b.Unsubscribe(msgCh)
 		clientDone <- [clientCount]int{id, msgSum, msgCount}
 	}
 	var subscribers [clientCount]chan interface{}
@@ -36,8 +43,8 @@ func TestBroker_Publish(t *testing.T) {
 		for msgId := 0; msgId < messageCount; msgId++ {
 			b.Publish(msgId)
 		}
-		for i := 0; i < clientCount; i++ {
-			b.Unsubscribe(subscribers[i])
+		for msgId := 0; msgId < messageCount; msgId++ {
+			b.Publish(stopClientMessage)
 		}
 	}()
 	accumulatedIds := 0
@@ -51,5 +58,18 @@ func TestBroker_Publish(t *testing.T) {
 			t.Errorf("Wrong count from cient id %d: %d", idMsgSumAndCount[0], idMsgSumAndCount[2])
 		}
 	}
-	b.Stop()
+}
+
+func TestConcurrentPublish_Unsubscribe(t *testing.T) {
+	b := NewBroker()
+	go b.Start()
+	defer b.Stop()
+	msgCh := b.Subscribe()
+	b.Publish("received message")
+	<-msgCh
+	b.Publish("buffered message")
+	b.Publish("pending message")
+	b.Unsubscribe(msgCh)
+	b.Unsubscribe(msgCh) // Allow unsubscribe already unsubscribed channel
+	b.Publish("dummy message")
 }

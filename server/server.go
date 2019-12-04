@@ -108,6 +108,7 @@ func (handler *infocenterGetHandler) ServeHTTP(writer http.ResponseWriter, reque
 
 func messageLoop(handler *infocenterGetHandler, writer http.ResponseWriter, request *http.Request, topic string) {
 	messageChannel := handler.eventStreamBroker.Subscribe()
+	defer handler.eventStreamBroker.Unsubscribe(messageChannel)
 	if handler.aboutToEnterSelectLoopFunc != nil {
 		handler.aboutToEnterSelectLoopFunc()
 	}
@@ -133,7 +134,6 @@ func messageLoop(handler *infocenterGetHandler, writer http.ResponseWriter, requ
 			}
 			return
 		case <-context.Done():
-			handler.eventStreamBroker.Unsubscribe(messageChannel)
 			return
 		}
 	}
